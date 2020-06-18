@@ -65,7 +65,7 @@ def non_max_suppression(img):
     #                 result[i, j] = img[i, j]
 
     result = cv2.dilate(img, np.ones((3, 3)), cv2.CV_32F, (-1, -1), 1, cv2.BORDER_CONSTANT)
-    result = (result == img)*img
+    result = (result == img) * img
     return result
 
 
@@ -73,15 +73,16 @@ def main():
     img = cv2.imread("../data/butterfly.jpg")
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = np.float32(gray)
+    cv2.normalize(gray, gray, 1, 0, cv2.NORM_MINMAX)
 
     sigma0 = np.sqrt(2)
     k = np.sqrt(2)
     num_scales = 15
-    sigmas = sigma0*np.power(k, np.arange(num_scales))
+    sigmas = sigma0 * np.power(k, np.arange(num_scales))
     img_stack = None
     for i in range(num_scales):
-        size = np.int(2*np.ceil(4*sigmas[i])+1)
-        kernel = log_kernel(sigmas[i], size)*np.power(sigmas[i], 2)
+        size = np.int(2 * np.ceil(4 * sigmas[i]) + 1)
+        kernel = log_kernel(sigmas[i], size) * np.power(sigmas[i], 2)
         filtered = cv2.filter2D(gray, cv2.CV_32F, kernel)
         filtered = pow(filtered, 2)
         filtered = non_max_suppression(filtered)
@@ -93,16 +94,15 @@ def main():
     max_stack = np.amax(img_stack, axis=2)
     max_stack = np.repeat(max_stack[:, :, np.newaxis], num_scales, axis=2)
     max_stack = np.multiply((max_stack == img_stack), img_stack)
+
     for i in range(num_scales):
-        radius = np.sqrt(2)*sigmas[i]
+        radius = np.sqrt(2) * sigmas[i]
         threshold = 0.007
         valid = max_stack[:, :, i]
-        valid[valid < threshold] = 0
-        # print(np.shape(valid))
+        valid[valid <= threshold] = 0
+        print(np.shape(valid))
         (x, y) = np.nonzero(valid)
-        # print(np.shape(x), np.shape(y))
-
-    # print(np.shape(max_stack))
+        print(np.shape(x), np.shape(y))
 
 
 if __name__ == "__main__":
