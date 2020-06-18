@@ -55,15 +55,17 @@ def non_max_suppression(img):
     h, w = np.shape(img)
     result = np.zeros_like(img)
     # TODO: Improve performance
-    for i in range(1, h-2):
-        for j in range(1, w-2):
-            if img[i, j] > 0:
-                window = np.array([img[i-1, j-1], img[i-1, j], img[i-1, j+1],
-                                   img[i, j-1], img[i, j], img[i, j+1],
-                                   img[i+1, j-1], img[i+1, j], img[i+1, j+1]])
-                if np.max(window) == img[i, j]:
-                    result[i, j] = img[i, j]
+    # for i in range(1, h-2):
+    #     for j in range(1, w-2):
+    #         if img[i, j] > 0:
+    #             window = np.array([img[i-1, j-1], img[i-1, j], img[i-1, j+1],
+    #                                img[i, j-1], img[i, j], img[i, j+1],
+    #                                img[i+1, j-1], img[i+1, j], img[i+1, j+1]])
+    #             if np.max(window) == img[i, j]:
+    #                 result[i, j] = img[i, j]
 
+    result = cv2.dilate(img, np.ones((3, 3)), cv2.CV_32F, (-1, -1), 1, cv2.BORDER_CONSTANT)
+    result = (result == img)*img
     return result
 
 
@@ -74,14 +76,33 @@ def main():
 
     sigma0 = np.sqrt(2)
     k = np.sqrt(2)
-    num_scales = 10
+    num_scales = 15
     sigmas = sigma0*np.power(k, np.arange(num_scales))
+    img_stack = None
     for i in range(num_scales):
         size = np.int(2*np.ceil(4*sigmas[i])+1)
         kernel = log_kernel(sigmas[i], size)*np.power(sigmas[i], 2)
         filtered = cv2.filter2D(gray, cv2.CV_32F, kernel)
         filtered = pow(filtered, 2)
         filtered = non_max_suppression(filtered)
+        if i == 0:
+            img_stack = filtered
+        else:
+            img_stack = np.dstack((img_stack, filtered))
+
+    max_stack = np.amax(img_stack, axis=2)
+    max_stack = np.repeat(max_stack[:, :, np.newaxis], num_scales, axis=2)
+    max_stack = np.multiply((max_stack == img_stack), img_stack)
+    for i in range(num_scales):
+        radius = np.sqrt(2)*sigmas[i]
+        threshold = 0.007
+        valid = max_stack[:, :, i]
+        valid[valid < threshold] = 0
+        # print(np.shape(valid))
+        (x, y) = np.nonzero(valid)
+        # print(np.shape(x), np.shape(y))
+
+    # print(np.shape(max_stack))
 
 
 if __name__ == "__main__":
