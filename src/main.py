@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 
 
+# Gaussian kernel generator
 def gaussian_kernel(sigma, size):
     if size % 2 == 0:
         size += 1
@@ -18,6 +19,7 @@ def gaussian_kernel(sigma, size):
     return kernel
 
 
+# Laplacian of Gaussian kernel generator
 def log_kernel(sigma, size):
     if size % 2 == 0:
         size += 1
@@ -35,6 +37,7 @@ def log_kernel(sigma, size):
     return kernel
 
 
+# Plot kernel in 3d
 def show_kernel(kernel):
     size = np.shape(kernel)[0]
     idx_range = np.linspace(-(size - 1) / 2., (size - 1) / 2., size)
@@ -51,26 +54,10 @@ def show_kernel(kernel):
     plt.close(fig)
 
 
-def non_max_suppression(img):
-    h, w = np.shape(img)
-    result = np.zeros_like(img)
-    # TODO: Improve performance
-    # for i in range(1, h-2):
-    #     for j in range(1, w-2):
-    #         if img[i, j] > 0:
-    #             window = np.array([img[i-1, j-1], img[i-1, j], img[i-1, j+1],
-    #                                img[i, j-1], img[i, j], img[i, j+1],
-    #                                img[i+1, j-1], img[i+1, j], img[i+1, j+1]])
-    #             if np.max(window) == img[i, j]:
-    #                 result[i, j] = img[i, j]
-
-    result = cv2.dilate(img, np.ones((3, 3)), cv2.CV_32F, (-1, -1), 1, cv2.BORDER_CONSTANT)
-    result = (result == img) * img
-    return result
-
-
 def main():
-    img = cv2.imread("../data/butterfly.jpg")
+    img_name = "butterfly"
+    # img_name = "sunflowers"
+    img = cv2.imread("../data/" + img_name + ".jpg")
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = np.float32(gray)
     cv2.normalize(gray, gray, 1, 0, cv2.NORM_MINMAX)
@@ -79,30 +66,59 @@ def main():
     k = np.sqrt(2)
     num_scales = 15
     sigmas = sigma0 * np.power(k, np.arange(num_scales))
+    # apply LoG kernel filtering with scaled kernel size and sigma
     img_stack = None
     for i in range(num_scales):
         size = np.int(2 * np.ceil(4 * sigmas[i]) + 1)
+        # with Laplacian response normalization
         kernel = log_kernel(sigmas[i], size) * np.power(sigmas[i], 2)
         filtered = cv2.filter2D(gray, cv2.CV_32F, kernel)
         filtered = pow(filtered, 2)
-        filtered = non_max_suppression(filtered)
         if i == 0:
             img_stack = filtered
         else:
             img_stack = np.dstack((img_stack, filtered))
 
-    max_stack = np.amax(img_stack, axis=2)
+    # Maximum response extraction
+    scale_space = None
+    for i in range(num_scales):
+        filtered = cv2.dilate(img_stack[:, :, i], np.ones((3, 3)), cv2.CV_32F, (-1, -1), 1, cv2.BORDER_CONSTANT)
+        if i == 0:
+            scale_space = filtered
+        else:
+            scale_space = np.dstack((scale_space, filtered))
+    max_stack = np.amax(scale_space, axis=2)
     max_stack = np.repeat(max_stack[:, :, np.newaxis], num_scales, axis=2)
-    max_stack = np.multiply((max_stack == img_stack), img_stack)
+    max_stack = np.multiply((max_stack == scale_space), scale_space)
 
+    radius_vec = None
+    x_vec = None
+    y_vec = None
     for i in range(num_scales):
         radius = np.sqrt(2) * sigmas[i]
-        threshold = 0.007
-        valid = max_stack[:, :, i]
+        threshold = 0.01
+        # filter out redundant response
+        valid = (max_stack[:, :, i] == img_stack[:, :, i]) * img_stack[:, :, i]
         valid[valid <= threshold] = 0
-        print(np.shape(valid))
         (x, y) = np.nonzero(valid)
-        print(np.shape(x), np.shape(y))
+        if i == 1:
+            x_vec = x
+            y_vec = y
+            radius_vec = np.repeat(radius, np.size(x))
+        else:
+            x_vec = np.concatenate((x_vec, x), axis=None)
+            y_vec = np.concatenate((y_vec, y), axis=None)
+            tmp_vec = np.repeat(radius, np.size(x))
+            radius_vec = np.concatenate((radius_vec, tmp_vec), axis=None)
+
+    out = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    out = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
+    for i in range(np.size(x_vec)):
+        cv2.circle(out, (y_vec[i], x_vec[i]), np.int(radius_vec[i]), (0, 0, 255), 1)
+    cv2.imshow("Blob Num "+str(np.size(x_vec)), out)
+    cv2.imwrite("../result/" + img_name + ".jpg", out)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
